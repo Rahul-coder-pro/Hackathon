@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>AI Accessibility Camera</title>
+<div  style="margin:20px;">
+    
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+<style>
+body{
+    background-color: #121212;
+    background-size: cover;
+    margin:0;
+    
+    color:rgba(97, 129, 246, 0.963);
+    font-family:Arial,sans-serif;
+    text-align:center;
+}
+
+h1{
+    text-align: center;
+    margin:15px;
+}
+
+.container{
+    
+    position:relative;
+    display:inline-block;
+}
+
+video{
+    
+    width:750px;
+    max-width:95vw;
+    border:2px solid rgb(18, 18, 241);
+    border-radius:10px;
+}
+
+canvas{
+    position:absolute;
+    top:0;
+    left:0;
+    
+}
+
+#status{
+    margin-top:15px;
+    font-size:18px;
+    font-weight:bold;
+    padding:10px;
+}
+#systembox {
+    display: flex;
+    justify-content: center;
+}
+button{
+    border-radius: 10px;
+    height: 80px;
+    border: 3px solid rgb(69, 45, 188);
+
+}
+button:hover{
+    transform: scale(1.2);
+    box-shadow:0px 0px 25px #ff00ff, 0px 0px 40px #00ffff;
+}
+textarea{
+    height: 75px;
+    border-radius: 10px;
+    border: 3px solid rgb(69, 45, 188);
+
+}
+</style>
+</head>
+<body>
+
+<div style="background-color: rgb(28, 28, 28);border: 2px solid;width: 745px;margin-left: 65px;border-radius: 10px;" >
+<h1>AI Camera Assistant</h1>
+</div>
+<div id="systembox">
+
+<div class="container" style="padding-left: 0%;">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+</div>
+
+
+<button onclick="startListening()" >
+    🎤
+        
+    </button>
+
+    <button onclick="stopListening()">
+      🔇 
+        
+    </button>
+
+    <br><br>
+
+    <textarea
+        id="speechText"
+        rows="4"
+        cols="50"
+        placeholder="Speech-to-text output will appear here..."
+    ></textarea>
+
+    <br><br>
+
+    <button onclick="readText()">
+        🗣️
+    </button>
+    </div>
+    <div id="status" style="border: 5px solid ;width: 700px;border-radius: 5px;margin-left: 70px;background-color: rgb(30, 30, 30);">Loading...</div>
+<script>
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const status = document.getElementById("status");
+
+let model;
+
+let lastSpeech = "";
+let lastSpeechTime = 0;
+
+function speak(text){
+
+    speechSynthesis.cancel();
+
+    const utterance =
+        new SpeechSynthesisUtterance(text);
+
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    speechSynthesis.speak(utterance);
+}
+
+async function startCamera(){
+
+    try{
+
+        const stream =
+        await navigator.mediaDevices.getUserMedia({
+            video:{
+                facingMode:"environment"
+            }
+        });
+
+        video.srcObject = stream;
+
+        return new Promise(resolve=>{
+            video.onloadedmetadata = ()=>{
+                resolve();
+            };
+        });
+
+    }catch(error){
+
+        console.error(error);
+
+        alert(
+            "Could not access camera. Please allow camera permission."
+        );
+    }
+}
+
+async function loadModel(){
+
+    status.innerText = "Loading AI Model...";
+
+    model = await cocoSsd.load();
+
+    status.innerText = "AI Ready";
+
+    detectObjects();
+}
+
+function getPosition(centerX){
+
+    if(centerX < canvas.width/3){
+        return "on your left";
+    }
+
+    if(centerX > canvas.width*2/3){
+        return "on your right";
+    }
+
+    return "in front of you";
+}
+
+function getDistance(width){
+
+    if(width > 400){
+        return "very close";
+    }
+
+    if(width > 250){
+        return "close";
+    }
+
+    if(width > 120){
+        return "medium distance";
+    }
+
+    return "far";
+}
+
+async function detectObjects(){
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    async function detect(){
+
+        const predictions =
+            await model.detect(video);
+
+        ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        let speechItems = [];
+
+        predictions.forEach(prediction=>{
+
+            const [x,y,w,h] =
+                prediction.bbox;
+
+            const centerX =
+                x + w/2;
+
+            const position =
+                getPosition(centerX);
+
+            const distance =
+                getDistance(w);
+
+            ctx.strokeStyle = "lime";
+            ctx.lineWidth = 3;
+
+            ctx.strokeRect(
+                x,
+                y,
+                w,
+                h
+            );
+
+            ctx.fillStyle = "lime";
+            ctx.font = "18px Arial";
+
+            const label =
+                `${prediction.class} | ${distance}`;
+
+            ctx.fillText(
+                label,
+                x,
+                y > 20 ? y-5 : 20
+            );
+
+            speechItems.push(
+                `${prediction.class} ${distance} ${position}`
+            );
+        });
+
+        if(speechItems.length > 0){
+
+            status.innerText =
+                speechItems.join(" | ");
+
+            const speechText =
+                speechItems.join(", ");
+
+            const now = Date.now();
+
+            if(
+                speechText !== lastSpeech &&
+                now - lastSpeechTime > 5000
+            ){
+
+                speak(speechText);
+
+                lastSpeech =
+                    speechText;
+
+                lastSpeechTime =
+                    now;
+            }
+
+        }else{
+
+            status.innerText =
+                "No object detected";
+        }
+
+        requestAnimationFrame(detect);
+    }
+
+    detect();
+}
+
+async function init(){
+
+    status.innerText =
+        "Starting camera...";
+
+    await startCamera();
+
+    await loadModel();
+}
+
+init();
+
+let recognition;
+
+function startListening(){
+
+    const SpeechRecognition =
+        window.SpeechRecognition ||
+        window.webkitSpeechRecognition;
+
+    if(!SpeechRecognition){
+
+        alert(
+            "Speech Recognition not supported. Use Chrome or Edge."
+        );
+
+        return;
+    }
+
+    recognition =
+        new SpeechRecognition();
+
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.start();
+
+    status.innerText =
+        "Listening...";
+
+    recognition.onresult =
+        function(event){
+
+        let transcript = "";
+
+        for(
+            let i = 0;
+            i < event.results.length;
+            i++
+        ){
+
+            transcript +=
+            event.results[i][0].transcript;
+        }
+
+        document.getElementById(
+            "speechText"
+        ).value = transcript;
+    };
+
+    recognition.onerror =
+        function(event){
+
+        console.error(
+            event.error
+        );
+
+        status.innerText =
+            "Speech Error: " +
+            event.error;
+    };
+}
+
+function stopListening(){
+
+    if(recognition){
+
+        recognition.stop();
+
+        status.innerText =
+            "Voice input stopped";
+    }
+}
+
+function readText(){
+
+    const text =
+        document.getElementById(
+            "speechText"
+        ).value;
+
+    if(text.trim() !== ""){
+
+        speak(text);
+    }
+}
+
+</script>
+
+</body>
+</html>
+
