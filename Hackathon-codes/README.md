@@ -17,3 +17,5 @@
 -kya baat ay
 
 ## API Keys
+-"AQ.Ab8RN6KH6Izcp3WFQaPe2-7wH7QIxoOww07mp2pzmT-DQjatTw"
+-"AQ.Ab8RN6LCNbbZUXqRURnv4h73G_5GCJMXYg_KzLa1BC4w6nQJog"
